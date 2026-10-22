@@ -49,7 +49,9 @@ while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
   [[ -z "$key" ]] && continue
 
   printf 'Definindo secret: %s\n' "$key"
-  printf '%s' "$value" | gh secret set "$key" "${REPO_ARGS[@]}" --body -
+  # Passa o valor como argumento (--body "$value") em vez de stdin, para não disputar
+  # o stdin com o loop `read` (o que pode deslocar valores entre as chaves).
+  gh secret set "$key" "${REPO_ARGS[@]}" --body "$value" </dev/null
   count=$((count + 1))
 done < "$ENV_FILE"
 

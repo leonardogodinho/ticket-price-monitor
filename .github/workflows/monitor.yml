@@ -1,0 +1,76 @@
+name: Monitor de preço do ingresso
+
+# Agenda a verificação. O cron do GitHub roda em UTC e pode atrasar alguns
+# minutos em horários de pico (não é um relógio exato). Para monitorar preço
+# de ingresso isso é aceitável.
+on:
+  schedule:
+    - cron: "*/5 * * * *" # a cada ~5 minutos
+  workflow_dispatch: # permite rodar manualmente pelo botão "Run workflow"
+    inputs:
+      test_email:
+        description: "Enviar apenas e-mail de teste (não verifica o preço)"
+        type: boolean
+        default: false
+
+# Evita execuções sobrepostas se uma rodada demorar mais que o intervalo.
+concurrency:
+  group: ticket-price-monitor
+  cancel-in-progress: false
+
+jobs:
+  check-price:
+    runs-on: ubuntu-latest
+    # A imagem oficial do Playwright já traz o Chromium e as dependências de sistema.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.60.0-jammy
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar dependências Python
+        run: pip install --requirement requirements.txt
+
+      # Restaura o estado da última execução para não reenviar o mesmo alerta.
+      # A key muda a cada run; restore-keys recupera o estado salvo mais recente.
+      - name: Restaurar estado do monitor
+        uses: actions/cache/restore@v4
+        with:
+          path: .monitor-state.json
+          key: monitor-state-${{ github.run_id }}
+          restore-keys: |
+            monitor-state-
+
+      - name: Executar monitor
+        env:
+          MONITOR_URL: ${{ secrets.MONITOR_URL }}
+          TICKET_TYPE: ${{ secrets.TICKET_TYPE }}
+          TICKET_TYPE_SELECTOR: ${{ secrets.TICKET_TYPE_SELECTOR }}
+          PRICE_SELECTOR: ${{ secrets.PRICE_SELECTOR }}
+          PRICE_THRESHOLD: ${{ secrets.PRICE_THRESHOLD }}
+          PAGE_TIMEOUT_SECONDS: ${{ secrets.PAGE_TIMEOUT_SECONDS }}
+          USER_AGENT: ${{ secrets.USER_AGENT }}
+          NOTIFICATION_PROVIDER: ${{ secrets.NOTIFICATION_PROVIDER }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURITY: ${{ secrets.SMTP_SECURITY }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.test_email }}" = "true" ]; then
+            python monitor.py --test-email
+          else
+            python monitor.py
+          fi
+
+      # Salva o estado atualizado para a próxima execução.
+      - name: Salvar estado do monitor
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .monitor-state.json
+          key: monitor-state-${{ github.run_id }}

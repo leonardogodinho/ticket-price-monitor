@@ -11,7 +11,7 @@ import smtplib
 import ssl
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from email.message import EmailMessage
 from pathlib import Path
@@ -159,6 +159,11 @@ def format_brl(value: Decimal) -> str:
     return f"R$ {rendered}"
 
 
+def local_now_iso() -> str:
+    """Horário atual no fuso local do sistema, em ISO 8601 com offset (ex.: -03:00)."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
 def fetch_prices(config: Config) -> List[Decimal]:
     """Render the page and return the price(s) to evaluate.
 
@@ -177,11 +182,15 @@ def fetch_prices(config: Config) -> List[Decimal]:
                     user_agent=config.user_agent,
                     viewport={"width": 1366, "height": 900},
                 )
-                wait_until = "networkidle" if config.ticket_type else "domcontentloaded"
-                page.goto(config.url, wait_until=wait_until, timeout=config.timeout_ms)
+                # Evita depender de "networkidle": esta página mantém conexões
+                # persistentes (Next.js) e pode nunca ficar ociosa, causando timeout
+                # intermitente. Carregamos o DOM e esperamos o elemento que importa.
+                page.goto(config.url, wait_until="domcontentloaded", timeout=config.timeout_ms)
                 if config.ticket_type:
-                    # The Next.js app hydrates the combobox a moment after load.
-                    page.wait_for_timeout(4000)
+                    # Espera o combobox hidratar, em vez de um tempo fixo cego.
+                    page.locator(config.ticket_type_selector).first.wait_for(
+                        state="visible", timeout=config.timeout_ms
+                    )
                     raw_prices = _fetch_ticket_type_prices(page, config)
                 else:
                     locator = page.locator(config.selector)
@@ -404,7 +413,7 @@ def write_state(path: Path, state: Dict[str, Any]) -> None:
 def check_price(config: Config, dry_run: bool) -> None:
     prices = fetch_prices(config)
     lowest_price = min(prices)
-    checked_at = datetime.now(timezone.utc).isoformat()
+    checked_at = local_now_iso()
     below_threshold = lowest_price < config.threshold
 
     label = f"{config.ticket_type} — " if config.ticket_type else ""
@@ -463,7 +472,7 @@ def check_price(config: Config, dry_run: bool) -> None:
 
 
 def test_email(config: Config) -> None:
-    sent_at = datetime.now(timezone.utc).isoformat()
+    sent_at = local_now_iso()
     send_email(
         config,
         "Teste do monitor de preço do ingresso",

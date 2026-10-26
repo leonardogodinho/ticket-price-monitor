@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ticket-price-monitor.caffeinate</string>
+
+    <!--
+      Mantém o sistema acordado enquanto o Mac estiver ligado, para que o
+      LaunchAgent do monitor (StartInterval de 5 min) não seja interrompido
+      pelo "Maintenance Sleep"/Deep Idle do macOS.
+        -i  impede idle sleep do sistema (vale em AC E na bateria)
+        -m  impede disk sleep
+        -d  impede o display de dormir (mantém o sistema ativo)
+      Observação: a flag -s (usada antes) só tinha efeito na tomada (AC),
+      por isso o Mac dormia quando saía da tomada. Com -i o sono é impedido
+      independentemente da fonte de energia.
+    -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-i</string>
+        <string>-m</string>
+        <string>-d</string>
+    </array>
+
+    <!-- Inicia no login e reinicia o caffeinate caso ele encerre. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/leonardo.godinho/Projetos/ticket-price-monitor/logs/caffeinate.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/leonardo.godinho/Projetos/ticket-price-monitor/logs/caffeinate-error.log</string>
+</dict>
+</plist>
